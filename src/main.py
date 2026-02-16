@@ -7,7 +7,7 @@ import signal
 import sys
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
 
@@ -52,12 +52,18 @@ async def main() -> None:
     await bot.start()
     log.info("Demand Engine is running. Press Ctrl+C to stop.")
 
-    # Health check server for Railway
+    # FastAPI server for Railway health check + Telegram webhook
     app = FastAPI()
 
     @app.get("/")
     async def health():
         return JSONResponse({"status": "ok", "service": "demand-engine"})
+
+    @app.post("/telegram-webhook")
+    async def telegram_webhook(request: Request):
+        data = await request.json()
+        await bot.process_webhook_update(data)
+        return JSONResponse({"ok": True})
 
     port = int(os.getenv("PORT", "8080"))
     config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning")

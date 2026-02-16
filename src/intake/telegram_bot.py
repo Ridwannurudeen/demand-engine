@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -38,6 +39,7 @@ class TelegramBot(IntakeSource):
         self.direct = DirectFulfillment()
         self.payment = PaymentMonitor()
         self.app: Application | None = None
+        self._webhook_url: str | None = None
 
     async def start(self) -> None:
         self.app = (
@@ -56,31 +58,42 @@ class TelegramBot(IntakeSource):
             MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message)
         )
 
-        # Force-clear any existing polling/webhook before we start
-        bot = Bot(token=TELEGRAM_BOT_TOKEN)
-        async with bot:
-            await bot.delete_webhook(drop_pending_updates=True)
-            # Call getUpdates with a short timeout to cancel any active long-poll
-            try:
-                await bot.get_updates(offset=-1, timeout=1)
-            except Exception:
-                pass
-        log.info("Cleared previous webhook/polling session")
-
-        # Wait for old instance to fully shut down during Railway deploys
-        await asyncio.sleep(10)
-
         await self.app.initialize()
         await self.app.start()
-        await self.app.updater.start_polling(
-            drop_pending_updates=True,
-            allowed_updates=Update.ALL_TYPES,
-        )
-        log.info("Telegram bot started")
+
+        # Use webhook mode on Railway (has RAILWAY_PUBLIC_DOMAIN),
+        # fall back to polling for local dev
+        public_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
+        if public_domain:
+            self._webhook_url = f"https://{public_domain}/telegram-webhook"
+            await self.app.bot.set_webhook(
+                url=self._webhook_url,
+                drop_pending_updates=True,
+                allowed_updates=Update.ALL_TYPES,
+            )
+            log.info("Telegram bot started (webhook: %s)", self._webhook_url)
+        else:
+            await self.app.updater.start_polling(
+                drop_pending_updates=True,
+                allowed_updates=Update.ALL_TYPES,
+            )
+            log.info("Telegram bot started (polling mode)")
+
+    @property
+    def is_webhook_mode(self) -> bool:
+        return self._webhook_url is not None
+
+    async def process_webhook_update(self, data: dict) -> None:
+        """Process an incoming webhook update from FastAPI."""
+        update = Update.de_json(data, self.app.bot)
+        await self.app.process_update(update)
 
     async def stop(self) -> None:
         if self.app:
-            await self.app.updater.stop()
+            if self._webhook_url:
+                await self.app.bot.delete_webhook()
+            else:
+                await self.app.updater.stop()
             await self.app.stop()
             await self.app.shutdown()
         log.info("Telegram bot stopped")
