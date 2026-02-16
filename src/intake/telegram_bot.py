@@ -433,10 +433,16 @@ class TelegramBot(IntakeSource):
                 return
             db_job.status = JobStatus.IN_PROGRESS
             complexity = db_job.complexity or 0.0
+            is_trial = db_job.is_free_trial
             await session.commit()
 
-        # Use orchestrator for complex tasks, direct for simple ones
-        if complexity > 0.7:
+        # Free trials always use direct (single call), no orchestration
+        if is_trial:
+            await self.send_message(
+                client_id, f"Job #{job_id}: Working on your free trial..."
+            )
+            result = await self.direct.fulfill(job_id)
+        elif complexity > 0.7:
             await self.send_message(
                 client_id,
                 f"Job #{job_id}: This is a complex request — breaking it into "

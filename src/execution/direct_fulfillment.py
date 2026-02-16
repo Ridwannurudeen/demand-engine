@@ -63,13 +63,17 @@ class DirectFulfillment:
             category = db_job.category.value if db_job.category else "other"
             system = CATEGORY_PROMPTS.get(category, CATEGORY_PROMPTS["other"])
             request = db_job.raw_request
+            is_trial = db_job.is_free_trial
 
-        log.info("Direct fulfillment for job #%d (%s)", job_id, category)
+        # Cap free trials at 1024 tokens to limit cost
+        max_tokens = 1024 if is_trial else 4096
+
+        log.info("Direct fulfillment for job #%d (%s, tokens=%d)", job_id, category, max_tokens)
 
         try:
             response = await self.client.messages.create(
                 model=CLAUDE_MODEL,
-                max_tokens=4096,
+                max_tokens=max_tokens,
                 system=system,
                 messages=[{"role": "user", "content": request}],
             )
