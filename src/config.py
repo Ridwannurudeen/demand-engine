@@ -14,6 +14,11 @@ ACP_CLI_PATH = Path(os.getenv("ACP_CLI_PATH", PROJECT_ROOT / "openclaw-acp"))
 # ── API Keys ─────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TWITTER_BEARER_TOKEN: str = os.getenv("TWITTER_BEARER_TOKEN", "")
+TWITTER_API_KEY: str = os.getenv("TWITTER_API_KEY", "")
+TWITTER_API_SECRET: str = os.getenv("TWITTER_API_SECRET", "")
+TWITTER_ACCESS_TOKEN: str = os.getenv("TWITTER_ACCESS_TOKEN", "")
+TWITTER_ACCESS_SECRET: str = os.getenv("TWITTER_ACCESS_SECRET", "")
 
 # ── ACP ──────────────────────────────────────────────────────────────────
 ACP_AGENT_WALLET: str = os.getenv("ACP_AGENT_WALLET", "")

@@ -11,9 +11,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
 
-from src.config import ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN
+from src.config import ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN, TWITTER_BEARER_TOKEN
 from src.data.models import init_db
 from src.intake.telegram_bot import TelegramBot
+from src.intake.twitter_intake import TwitterIntake
+from src.web.dashboard import router as dashboard_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,6 +52,15 @@ async def main() -> None:
     # Start Telegram bot
     bot = TelegramBot()
     await bot.start()
+
+    # Start Twitter intake (optional — only if credentials are set)
+    twitter = TwitterIntake()
+    if TWITTER_BEARER_TOKEN:
+        await twitter.start()
+        log.info("Twitter intake active")
+    else:
+        log.info("Twitter intake disabled (no TWITTER_BEARER_TOKEN)")
+
     log.info("Demand Engine is running. Press Ctrl+C to stop.")
 
     # FastAPI server for Railway health check + Telegram webhook
@@ -64,6 +75,8 @@ async def main() -> None:
         data = await request.json()
         await bot.process_webhook_update(data)
         return JSONResponse({"ok": True})
+
+    app.include_router(dashboard_router)
 
     port = int(os.getenv("PORT", "8080"))
     config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning")
@@ -89,6 +102,7 @@ async def main() -> None:
         pass
     finally:
         log.info("Shutting down...")
+        await twitter.stop()
         await bot.stop()
         log.info("Demand Engine stopped.")
 
