@@ -16,6 +16,7 @@ from telegram.ext import (
 from src.config import TELEGRAM_BOT_TOKEN
 from src.data.models import AsyncSessionLocal, Job, JobStatus
 from src.execution.delivery import DeliveryManager
+from src.execution.direct_fulfillment import DirectFulfillment
 from src.execution.job_manager import JobManager
 from src.execution.payment import PaymentMonitor
 from src.intake.base import IntakeSource
@@ -33,6 +34,7 @@ class TelegramBot(IntakeSource):
         self.matcher = AgentMatcher()
         self.job_mgr = JobManager()
         self.delivery = DeliveryManager()
+        self.direct = DirectFulfillment()
         self.payment = PaymentMonitor()
         self.app: Application | None = None
 
@@ -347,62 +349,30 @@ class TelegramBot(IntakeSource):
             )
 
     async def _process_paid_job(self, job_id: int, client_id: str) -> None:
-        """After payment confirmed: match agent, create ACP job, start monitoring."""
+        """After payment confirmed: fulfill the job directly via Claude."""
         async with AsyncSessionLocal() as session:
             db_job = await session.get(Job, job_id)
             if not db_job:
                 return
-            db_job.status = JobStatus.MATCHING
+            db_job.status = JobStatus.IN_PROGRESS
             await session.commit()
-            raw_request = db_job.raw_request
-            agent_budget = db_job.client_price * 0.4 if db_job.client_price else 20.0
 
-        try:
-            classification = await self.classifier.classify(raw_request)
-        except Exception:
+        await self.send_message(client_id, f"Job #{job_id}: Working on it now...")
+
+        # Fulfill directly via Claude (100% margin, no ACP agent needed)
+        result = await self.direct.fulfill(job_id)
+
+        if result:
+            # Deliver result in chat
+            formatted = await self.delivery.format_for_telegram(job_id)
+            await self.send_message(client_id, formatted)
+            await self.delivery.mark_delivered_to_client(job_id)
+        else:
             await self.send_message(
                 client_id,
-                f"Job #{job_id}: Error during agent matching. We'll retry shortly."
+                f"Job #{job_id}: Something went wrong during fulfillment. "
+                "We're looking into it and will get back to you."
             )
-            return
-
-        candidates = await self.matcher.find_agents(
-            classification, budget=agent_budget
-        )
-
-        if not candidates:
-            await self.send_message(
-                client_id,
-                f"Job #{job_id}: No suitable agents found right now. "
-                "We'll keep looking and notify you."
-            )
-            return
-
-        best = candidates[0]
-
-        try:
-            async with AsyncSessionLocal() as session:
-                db_job = await session.get(Job, job_id)
-            acp_job_id = await self.job_mgr.create_acp_job(db_job, best)
-        except Exception as e:
-            log.error("ACP job creation failed: %s", e)
-            await self.send_message(
-                client_id,
-                f"Job #{job_id}: Failed to create the job on-chain. "
-                "Our team has been notified."
-            )
-            return
-
-        await self.send_message(
-            client_id,
-            f"Job #{job_id} is now live!\n\n"
-            f"Agent: {best.name}\n"
-            f"ACP Job: {acp_job_id}\n\n"
-            "I'll notify you when the result is ready. "
-            f"Check progress anytime with /status {job_id}"
-        )
-
-        await self.job_mgr.start_monitoring(job_id, acp_job_id)
 
     async def _decline_job(self, query, job_id: int) -> None:
         async with AsyncSessionLocal() as session:
