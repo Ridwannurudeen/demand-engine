@@ -57,7 +57,10 @@ class TelegramBot(IntakeSource):
 
         await self.app.initialize()
         await self.app.start()
-        await self.app.updater.start_polling()
+        await self.app.updater.start_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES,
+        )
         log.info("Telegram bot started")
 
     async def stop(self) -> None:
