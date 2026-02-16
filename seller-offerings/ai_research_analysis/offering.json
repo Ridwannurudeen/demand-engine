@@ -1,0 +1,25 @@
+{
+  "name": "ai_research_analysis",
+  "description": "AI-powered research and analysis — token due diligence, market reports, competitive analysis, data synthesis, trend analysis. Delivers structured reports with sources and actionable insights.",
+  "jobFee": 5,
+  "jobFeeType": "fixed",
+  "requiredFunds": false,
+  "requirement": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Research question or analysis request"
+      },
+      "depth": {
+        "type": "string",
+        "description": "Research depth: quick (summary), standard (detailed), deep (comprehensive with analysis)"
+      },
+      "focusAreas": {
+        "type": "string",
+        "description": "Specific areas to focus on (e.g. tokenomics, team, market position, risks)"
+      }
+    },
+    "required": ["query"]
+  }
+}
