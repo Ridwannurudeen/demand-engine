@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.sqlite
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+node_modules/
+openclaw-acp/
+.mypy_cache/
