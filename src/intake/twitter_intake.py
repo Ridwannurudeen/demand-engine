@@ -42,7 +42,7 @@ DEMAND_KEYWORDS = [
     "hire an AI",
 ]
 
-BOT_USERNAME = "DemandEngineBot"
+BOT_USERNAME = "acpdemandbot"
 
 
 class TwitterIntake(IntakeSource):
