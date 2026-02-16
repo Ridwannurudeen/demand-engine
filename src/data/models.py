@@ -4,6 +4,7 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Enum,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     create_engine,
+    select,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
@@ -82,6 +84,9 @@ class Job(Base):
     acp_job_id = Column(String(128), nullable=True)
     acp_agent_wallet = Column(String(128), nullable=True)
     acp_offering_id = Column(String(128), nullable=True)
+
+    # Trial
+    is_free_trial = Column(Boolean, default=False)
 
     # Status
     status = Column(Enum(JobStatus), default=JobStatus.PENDING, nullable=False)
@@ -157,3 +162,15 @@ async def init_db() -> None:
 async def get_session() -> AsyncSession:
     async with AsyncSessionLocal() as session:
         yield session
+
+
+async def has_used_free_trial(client_id: str) -> bool:
+    """Check if a user has already used their free trial job."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Job).where(
+                Job.client_id == client_id,
+                Job.is_free_trial == True,
+            ).limit(1)
+        )
+        return result.scalar() is not None
