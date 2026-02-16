@@ -16,7 +16,7 @@ from telegram.ext import (
 )
 
 from src.config import TELEGRAM_BOT_TOKEN
-from src.data.models import AsyncSessionLocal, Job, JobStatus
+from src.data.models import AsyncSessionLocal, Job, JobStatus, has_used_free_trial
 from src.execution.delivery import DeliveryManager
 from src.execution.direct_fulfillment import DirectFulfillment
 from src.execution.job_manager import JobManager
@@ -109,9 +109,9 @@ class TelegramBot(IntakeSource):
     ) -> None:
         await update.message.reply_text(
             "Welcome to the Demand Engine!\n\n"
-            "I connect you with AI agents on the Virtuals Protocol to get work done.\n\n"
-            "Just tell me what you need — content creation, research, code, "
-            "data analysis, social media management, and more.\n\n"
+            "I connect you with AI agents to get work done — content creation, "
+            "research, code, data analysis, social media, and more.\n\n"
+            "Your first job is FREE — just describe what you need!\n\n"
             "Commands:\n"
             "/help — What I can do\n"
             "/status <job_id> — Check job status\n"
@@ -247,6 +247,9 @@ class TelegramBot(IntakeSource):
         # Generate quote
         quote = self.pricer.generate_quote(classification)
 
+        # Check free trial eligibility
+        eligible_for_trial = not await has_used_free_trial(str(user.id))
+
         # Update job with classification data
         async with AsyncSessionLocal() as session:
             db_job = await session.get(Job, job_id)
@@ -257,18 +260,38 @@ class TelegramBot(IntakeSource):
             await session.commit()
 
         # Present quote with accept/reject buttons
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("Accept", callback_data=f"accept_{job_id}"),
-                InlineKeyboardButton("Decline", callback_data=f"decline_{job_id}"),
-            ]
-        ])
-
-        await update.message.reply_text(
-            f"Here's your quote (Job #{job_id}):\n\n{quote.breakdown}\n\n"
-            "Accept to proceed?",
-            reply_markup=keyboard,
-        )
+        if eligible_for_trial:
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "Try Free", callback_data=f"trial_{job_id}"
+                    ),
+                    InlineKeyboardButton(
+                        "Decline", callback_data=f"decline_{job_id}"
+                    ),
+                ]
+            ])
+            await update.message.reply_text(
+                f"Here's your quote (Job #{job_id}):\n\n{quote.breakdown}\n\n"
+                "Your first job is FREE! Tap 'Try Free' to get started.",
+                reply_markup=keyboard,
+            )
+        else:
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "Accept", callback_data=f"accept_{job_id}"
+                    ),
+                    InlineKeyboardButton(
+                        "Decline", callback_data=f"decline_{job_id}"
+                    ),
+                ]
+            ])
+            await update.message.reply_text(
+                f"Here's your quote (Job #{job_id}):\n\n{quote.breakdown}\n\n"
+                "Accept to proceed?",
+                reply_markup=keyboard,
+            )
 
     # ── Callback handling (accept/decline quotes) ────────────────────
 
@@ -279,12 +302,33 @@ class TelegramBot(IntakeSource):
         await query.answer()
         data = query.data
 
-        if data.startswith("accept_"):
+        if data.startswith("trial_"):
+            job_id = int(data.split("_", 1)[1])
+            await self._start_free_trial(query, job_id)
+        elif data.startswith("accept_"):
             job_id = int(data.split("_", 1)[1])
             await self._accept_job(query, job_id)
         elif data.startswith("decline_"):
             job_id = int(data.split("_", 1)[1])
             await self._decline_job(query, job_id)
+
+    async def _start_free_trial(self, query, job_id: int) -> None:
+        async with AsyncSessionLocal() as session:
+            db_job = await session.get(Job, job_id)
+            if not db_job:
+                await query.edit_message_text("Job not found.")
+                return
+            db_job.status = JobStatus.ACCEPTED
+            db_job.is_free_trial = True
+            db_job.client_price = 0.0
+            await session.commit()
+            client_id = db_job.client_id
+
+        await query.edit_message_text(
+            f"Job #{job_id} — Free trial activated!\n\n"
+            "Working on your request now..."
+        )
+        await self._process_paid_job(job_id, client_id)
 
     async def _accept_job(self, query, job_id: int) -> None:
         async with AsyncSessionLocal() as session:
