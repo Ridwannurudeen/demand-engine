@@ -3,8 +3,13 @@ from __future__ import annotations
 import asyncio
 import logging
 
-import tweepy
-from tweepy.asynchronous import AsyncClient
+try:
+    import tweepy
+    from tweepy.asynchronous import AsyncClient
+    HAS_TWEEPY = True
+except (ImportError, Exception):
+    HAS_TWEEPY = False
+    AsyncClient = None
 
 from src.config import (
     TWITTER_API_KEY,
@@ -53,6 +58,9 @@ class TwitterIntake(IntakeSource):
         self._poll_task: asyncio.Task | None = None
 
     async def start(self) -> None:
+        if not HAS_TWEEPY:
+            log.warning("tweepy async deps not installed — Twitter intake disabled")
+            return
         if not TWITTER_BEARER_TOKEN:
             log.warning("TWITTER_BEARER_TOKEN not set — Twitter intake disabled")
             return
