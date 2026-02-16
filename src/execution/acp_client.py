@@ -25,7 +25,7 @@ class ACPClient:
         self.wallet = ACP_AGENT_WALLET
 
     async def _run(self, *args: str) -> dict:
-        cmd = ["npx", "ts-node", str(self.cli_path / "src" / "cli.ts"), *args]
+        cmd = ["npx", "tsx", str(self.cli_path / "bin" / "acp.ts"), *args, "--json"]
         log.debug("ACP CLI: %s", " ".join(cmd))
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -62,9 +62,8 @@ class ACPClient:
     ) -> ACPJobResult:
         result = await self._run(
             "job", "create",
-            "--agent", agent_wallet,
-            "--offering", offering_id,
-            "--params", json.dumps(params),
+            agent_wallet, offering_id,
+            "--requirements", json.dumps(params),
         )
         return ACPJobResult(
             job_id=result.get("job_id", result.get("id", "")),
