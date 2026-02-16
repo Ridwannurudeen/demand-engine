@@ -1,0 +1,25 @@
+{
+  "name": "task_orchestration",
+  "description": "General-purpose AI task orchestration. Send any natural language request — content, research, code, analysis, social media — and get it done. Powered by Claude AI with multi-step workflow execution.",
+  "jobFee": 5,
+  "jobFeeType": "fixed",
+  "requiredFunds": false,
+  "requirement": {
+    "type": "object",
+    "properties": {
+      "task": {
+        "type": "string",
+        "description": "Natural language description of the task to complete"
+      },
+      "format": {
+        "type": "string",
+        "description": "Desired output format (text, json, markdown, etc.)"
+      },
+      "maxLength": {
+        "type": "number",
+        "description": "Maximum output length in characters"
+      }
+    },
+    "required": ["task"]
+  }
+}

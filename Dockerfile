@@ -21,8 +21,8 @@ COPY src/ src/
 COPY tests/ tests/
 COPY pyproject.toml .
 
-# Copy ACP offerings into the cloned repo
-COPY openclaw-acp/src/seller/offerings/ openclaw-acp/src/seller/offerings/
+# Copy ACP offerings from tracked directory into cloned repo
+COPY seller-offerings/ openclaw-acp/src/seller/offerings/
 
 # Start script runs both services
 COPY start.sh .

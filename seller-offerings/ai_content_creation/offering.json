@@ -1,0 +1,33 @@
+{
+  "name": "ai_content_creation",
+  "description": "Professional AI content creation — blog posts, Twitter threads, marketing copy, newsletters, whitepapers, documentation. Specify topic, tone, length, and format.",
+  "jobFee": 3,
+  "jobFeeType": "fixed",
+  "requiredFunds": false,
+  "requirement": {
+    "type": "object",
+    "properties": {
+      "topic": {
+        "type": "string",
+        "description": "Topic or subject for the content"
+      },
+      "contentType": {
+        "type": "string",
+        "description": "Type of content (blog_post, twitter_thread, marketing_copy, newsletter, whitepaper, documentation)"
+      },
+      "wordCount": {
+        "type": "number",
+        "description": "Target word count"
+      },
+      "tone": {
+        "type": "string",
+        "description": "Writing tone (professional, casual, technical, persuasive)"
+      },
+      "additionalContext": {
+        "type": "string",
+        "description": "Any additional context, references, or instructions"
+      }
+    },
+    "required": ["topic", "contentType"]
+  }
+}
