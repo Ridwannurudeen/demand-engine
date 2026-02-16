@@ -20,6 +20,7 @@ from src.data.models import AsyncSessionLocal, Job, JobStatus, has_used_free_tri
 from src.execution.delivery import DeliveryManager
 from src.execution.direct_fulfillment import DirectFulfillment
 from src.execution.job_manager import JobManager
+from src.execution.orchestrator import Orchestrator
 from src.execution.payment import PaymentMonitor
 from src.intake.base import IntakeSource
 from src.intelligence.agent_matcher import AgentMatcher
@@ -37,6 +38,7 @@ class TelegramBot(IntakeSource):
         self.job_mgr = JobManager()
         self.delivery = DeliveryManager()
         self.direct = DirectFulfillment()
+        self.orchestrator = Orchestrator()
         self.payment = PaymentMonitor()
         self.app: Application | None = None
         self._webhook_url: str | None = None
@@ -430,15 +432,24 @@ class TelegramBot(IntakeSource):
             if not db_job:
                 return
             db_job.status = JobStatus.IN_PROGRESS
+            complexity = db_job.complexity or 0.0
             await session.commit()
 
-        await self.send_message(client_id, f"Job #{job_id}: Working on it now...")
-
-        # Fulfill directly via Claude (100% margin, no ACP agent needed)
-        result = await self.direct.fulfill(job_id)
+        # Use orchestrator for complex tasks, direct for simple ones
+        if complexity > 0.7:
+            await self.send_message(
+                client_id,
+                f"Job #{job_id}: This is a complex request — breaking it into "
+                "sub-tasks and working on them in parallel..."
+            )
+            result = await self.orchestrator.fulfill(job_id)
+        else:
+            await self.send_message(
+                client_id, f"Job #{job_id}: Working on it now..."
+            )
+            result = await self.direct.fulfill(job_id)
 
         if result:
-            # Deliver result in chat
             formatted = await self.delivery.format_for_telegram(job_id)
             await self.send_message(client_id, formatted)
             await self.delivery.mark_delivered_to_client(job_id)
