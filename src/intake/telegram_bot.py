@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -54,6 +55,15 @@ class TelegramBot(IntakeSource):
         self.app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message)
         )
+
+        # Force-clear any existing polling/webhook before we start
+        bot = Bot(token=TELEGRAM_BOT_TOKEN)
+        async with bot:
+            await bot.delete_webhook(drop_pending_updates=True)
+        log.info("Cleared previous webhook/polling session")
+
+        # Brief pause to let Telegram release the old connection
+        await asyncio.sleep(3)
 
         await self.app.initialize()
         await self.app.start()
