@@ -60,10 +60,15 @@ class TelegramBot(IntakeSource):
         bot = Bot(token=TELEGRAM_BOT_TOKEN)
         async with bot:
             await bot.delete_webhook(drop_pending_updates=True)
+            # Call getUpdates with a short timeout to cancel any active long-poll
+            try:
+                await bot.get_updates(offset=-1, timeout=1)
+            except Exception:
+                pass
         log.info("Cleared previous webhook/polling session")
 
-        # Brief pause to let Telegram release the old connection
-        await asyncio.sleep(3)
+        # Wait for old instance to fully shut down during Railway deploys
+        await asyncio.sleep(10)
 
         await self.app.initialize()
         await self.app.start()
