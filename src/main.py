@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import signal
 import sys
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+import uvicorn
 
 from src.config import ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN
 from src.data.models import init_db
@@ -46,6 +52,18 @@ async def main() -> None:
     await bot.start()
     log.info("Demand Engine is running. Press Ctrl+C to stop.")
 
+    # Health check server for Railway
+    app = FastAPI()
+
+    @app.get("/")
+    async def health():
+        return JSONResponse({"status": "ok", "service": "demand-engine"})
+
+    port = int(os.getenv("PORT", "8080"))
+    config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning")
+    server = uvicorn.Server(config)
+    log.info("Health check server on port %d", port)
+
     # Keep alive
     stop_event = asyncio.Event()
 
@@ -57,11 +75,10 @@ async def main() -> None:
         try:
             loop.add_signal_handler(sig, _signal_handler)
         except NotImplementedError:
-            # Windows doesn't support add_signal_handler for SIGTERM
             pass
 
     try:
-        await stop_event.wait()
+        await server.serve()
     except KeyboardInterrupt:
         pass
     finally:
