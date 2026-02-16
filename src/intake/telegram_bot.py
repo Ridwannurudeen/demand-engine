@@ -17,6 +17,7 @@ from src.config import TELEGRAM_BOT_TOKEN
 from src.data.models import AsyncSessionLocal, Job, JobStatus
 from src.execution.delivery import DeliveryManager
 from src.execution.job_manager import JobManager
+from src.execution.payment import PaymentMonitor
 from src.intake.base import IntakeSource
 from src.intelligence.agent_matcher import AgentMatcher
 from src.intelligence.pricing_engine import PricingEngine
@@ -32,6 +33,7 @@ class TelegramBot(IntakeSource):
         self.matcher = AgentMatcher()
         self.job_mgr = JobManager()
         self.delivery = DeliveryManager()
+        self.payment = PaymentMonitor()
         self.app: Application | None = None
 
     async def start(self) -> None:
@@ -45,6 +47,7 @@ class TelegramBot(IntakeSource):
         self.app.add_handler(CommandHandler("help", self._cmd_help))
         self.app.add_handler(CommandHandler("status", self._cmd_status))
         self.app.add_handler(CommandHandler("jobs", self._cmd_jobs))
+        self.app.add_handler(CommandHandler("paid", self._cmd_paid))
         self.app.add_handler(CallbackQueryHandler(self._handle_callback))
         self.app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message)
@@ -251,56 +254,147 @@ class TelegramBot(IntakeSource):
             await self._decline_job(query, job_id)
 
     async def _accept_job(self, query, job_id: int) -> None:
-        await query.edit_message_text(
-            f"Job #{job_id} accepted! Finding the best agent..."
-        )
-
         async with AsyncSessionLocal() as session:
             db_job = await session.get(Job, job_id)
             if not db_job:
                 await query.edit_message_text("Job not found.")
                 return
+            db_job.status = JobStatus.ACCEPTED
+            await session.commit()
+            client_price = db_job.client_price or 0
+            client_id = db_job.client_id
+
+        # Show payment instructions
+        instructions = self.payment.get_payment_instructions(client_price, job_id)
+        await query.edit_message_text(
+            f"Job #{job_id} accepted!\n\n{instructions}",
+            parse_mode="Markdown",
+        )
+
+        # Start monitoring for payment in background
+        import asyncio
+        asyncio.create_task(
+            self._wait_for_payment_and_process(job_id, client_price, client_id)
+        )
+
+    async def _wait_for_payment_and_process(
+        self, job_id: int, amount: float, client_id: str
+    ) -> None:
+        """Background task: wait for USDC payment, then start the job."""
+        payment = await self.payment.wait_for_payment(amount, timeout=600.0)
+        if payment:
+            await self.send_message(
+                client_id,
+                f"Payment received for Job #{job_id}! "
+                f"({payment['amount']:.2f} USDC, tx: {payment['hash'][:16]}...)\n\n"
+                "Finding the best agent now..."
+            )
+            await self._process_paid_job(job_id, client_id)
+        else:
+            await self.send_message(
+                client_id,
+                f"Job #{job_id}: Payment not detected within 10 minutes. "
+                f"If you already paid, use /paid {job_id} to trigger manual verification."
+            )
+
+    async def _cmd_paid(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Manual payment confirmation trigger."""
+        args = context.args
+        if not args:
+            await update.message.reply_text("Usage: /paid <job_id>")
+            return
+
+        try:
+            job_id = int(args[0])
+        except ValueError:
+            await update.message.reply_text("Invalid job ID.")
+            return
+
+        async with AsyncSessionLocal() as session:
+            db_job = await session.get(Job, job_id)
+            if not db_job or str(db_job.client_id) != str(update.effective_user.id):
+                await update.message.reply_text("Job not found.")
+                return
+            if db_job.status != JobStatus.ACCEPTED:
+                await update.message.reply_text(
+                    f"Job #{job_id} is not awaiting payment (status: {db_job.status.value})."
+                )
+                return
+            client_price = db_job.client_price or 0
+            client_id = db_job.client_id
+
+        await update.message.reply_text(
+            f"Checking for payment on Base chain for Job #{job_id}..."
+        )
+
+        # Quick check for recent transfers
+        payment = await self.payment.wait_for_payment(
+            client_price, timeout=30.0, poll_interval=5.0
+        )
+        if payment:
+            await update.message.reply_text(
+                f"Payment confirmed! ({payment['amount']:.2f} USDC)\n"
+                "Finding the best agent now..."
+            )
+            await self._process_paid_job(job_id, client_id)
+        else:
+            await update.message.reply_text(
+                f"Payment not found yet for ${client_price:.2f} USDC. "
+                "Make sure you sent USDC on the Base chain to the correct address. "
+                "Try /paid again in a minute."
+            )
+
+    async def _process_paid_job(self, job_id: int, client_id: str) -> None:
+        """After payment confirmed: match agent, create ACP job, start monitoring."""
+        async with AsyncSessionLocal() as session:
+            db_job = await session.get(Job, job_id)
+            if not db_job:
+                return
             db_job.status = JobStatus.MATCHING
             await session.commit()
-
             raw_request = db_job.raw_request
             agent_budget = db_job.client_price * 0.4 if db_job.client_price else 20.0
 
-        # Re-classify to get structured data for matching
         try:
             classification = await self.classifier.classify(raw_request)
         except Exception:
-            await query.edit_message_text(
+            await self.send_message(
+                client_id,
                 f"Job #{job_id}: Error during agent matching. We'll retry shortly."
             )
             return
 
-        # Find agents
         candidates = await self.matcher.find_agents(
             classification, budget=agent_budget
         )
 
         if not candidates:
-            await query.edit_message_text(
+            await self.send_message(
+                client_id,
                 f"Job #{job_id}: No suitable agents found right now. "
-                "We'll keep looking and notify you when one is available."
+                "We'll keep looking and notify you."
             )
             return
 
         best = candidates[0]
 
-        # Create ACP job
         try:
+            async with AsyncSessionLocal() as session:
+                db_job = await session.get(Job, job_id)
             acp_job_id = await self.job_mgr.create_acp_job(db_job, best)
         except Exception as e:
             log.error("ACP job creation failed: %s", e)
-            await query.edit_message_text(
+            await self.send_message(
+                client_id,
                 f"Job #{job_id}: Failed to create the job on-chain. "
                 "Our team has been notified."
             )
             return
 
-        await query.edit_message_text(
+        await self.send_message(
+            client_id,
             f"Job #{job_id} is now live!\n\n"
             f"Agent: {best.name}\n"
             f"ACP Job: {acp_job_id}\n\n"
@@ -308,7 +402,6 @@ class TelegramBot(IntakeSource):
             f"Check progress anytime with /status {job_id}"
         )
 
-        # Start monitoring the ACP job
         await self.job_mgr.start_monitoring(job_id, acp_job_id)
 
     async def _decline_job(self, query, job_id: int) -> None:
