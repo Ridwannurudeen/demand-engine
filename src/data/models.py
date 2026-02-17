@@ -164,13 +164,16 @@ async def get_session() -> AsyncSession:
         yield session
 
 
-async def has_used_free_trial(client_id: str) -> bool:
+async def has_used_free_trial(client_id: str, platform: str | None = None) -> bool:
     """Check if a user has already used their free trial job."""
     async with AsyncSessionLocal() as session:
+        conditions = [
+            Job.client_id == client_id,
+            Job.is_free_trial == True,
+        ]
+        if platform:
+            conditions.append(Job.client_platform == platform)
         result = await session.execute(
-            select(Job).where(
-                Job.client_id == client_id,
-                Job.is_free_trial == True,
-            ).limit(1)
+            select(Job).where(*conditions).limit(1)
         )
         return result.scalar() is not None

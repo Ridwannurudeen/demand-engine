@@ -169,11 +169,13 @@ class TwitterIntake(IntakeSource):
         quote = self.pricer.generate_quote(classification)
 
         # Create job record
+        # client_id = tweet_id (needed by send_message for reply threading)
+        # client_username = author_id (for user identity / free trial checks)
         async with AsyncSessionLocal() as session:
             job = Job(
                 client_platform="twitter",
-                client_id=author_id,
-                client_username=f"tweet_{tweet_id}",
+                client_id=tweet_id,
+                client_username=author_id,
                 raw_request=clean_text,
                 status=JobStatus.QUOTED,
                 category=classification.category,
@@ -185,8 +187,8 @@ class TwitterIntake(IntakeSource):
             await session.refresh(job)
             job_id = job.id
 
-        # Check free trial eligibility
-        eligible = not await has_used_free_trial(author_id)
+        # Check free trial eligibility (use author_id for user identity)
+        eligible = not await has_used_free_trial(author_id, platform="twitter")
 
         if eligible:
             await self.send_message(
