@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
 import anthropic
@@ -37,10 +38,16 @@ Output ONLY valid JSON."""
 
 
 class JobManager:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        on_complete: Callable[[int], Awaitable[None]] | None = None,
+        on_failure: Callable[[int], Awaitable[None]] | None = None,
+    ) -> None:
         self.acp = ACPClient()
         self.claude = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
         self._poll_tasks: dict[int, asyncio.Task] = {}
+        self.on_complete = on_complete
+        self.on_failure = on_failure
 
     async def create_acp_job(
         self, job: Job, candidate: AgentCandidate
@@ -185,6 +192,9 @@ class JobManager:
         log.info("Job #%d completed. Quality: %.2f",
                  job_id, evaluation.get("quality_score", 0))
 
+        if self.on_complete:
+            await self.on_complete(job_id)
+
     async def _handle_failure(
         self, job_id: int, status: str, data: dict
     ) -> None:
@@ -194,6 +204,9 @@ class JobManager:
             db_job.result_summary = f"ACP job {status}: {data.get('reason', 'unknown')}"
             await session.commit()
         log.warning("Job #%d failed: %s", job_id, status)
+
+        if self.on_failure:
+            await self.on_failure(job_id)
 
     async def _evaluate_deliverable(
         self, job_id: int, deliverable: str

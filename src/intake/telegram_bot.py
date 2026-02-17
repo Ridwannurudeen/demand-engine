@@ -35,7 +35,10 @@ class TelegramBot(IntakeSource):
         self.classifier = TaskClassifier()
         self.pricer = PricingEngine()
         self.matcher = AgentMatcher()
-        self.job_mgr = JobManager()
+        self.job_mgr = JobManager(
+            on_complete=self._on_acp_complete,
+            on_failure=self._on_acp_failure,
+        )
         self.delivery = DeliveryManager()
         self.direct = DirectFulfillment()
         self.orchestrator = Orchestrator()
@@ -520,6 +523,35 @@ class TelegramBot(IntakeSource):
             "sub-tasks and working on them in parallel..."
         )
         return False, await self.orchestrator.fulfill(job_id)
+
+    # ── ACP completion/failure callbacks ────────────────────────────
+
+    async def _on_acp_complete(self, job_id: int) -> None:
+        """Notify the user when an ACP-delegated job completes."""
+        async with AsyncSessionLocal() as session:
+            db_job = await session.get(Job, job_id)
+            if not db_job:
+                return
+            client_id = db_job.client_id
+
+        formatted = await self.delivery.format_for_telegram(job_id)
+        await self.send_message(client_id, formatted)
+        await self.delivery.mark_delivered_to_client(job_id)
+
+    async def _on_acp_failure(self, job_id: int) -> None:
+        """Notify the user when an ACP-delegated job fails."""
+        async with AsyncSessionLocal() as session:
+            db_job = await session.get(Job, job_id)
+            if not db_job:
+                return
+            client_id = db_job.client_id
+            summary = db_job.result_summary or "Unknown error"
+
+        await self.send_message(
+            client_id,
+            f"Job #{job_id} failed: {summary}\n\n"
+            "We're sorry about that. You can try submitting a new request.",
+        )
 
     async def _decline_job(self, query, job_id: int) -> None:
         async with AsyncSessionLocal() as session:
