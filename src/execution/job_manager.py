@@ -138,11 +138,19 @@ class JobManager:
                 session.add(agent)
                 await session.flush()
 
+            # Calculate speed_score from actual elapsed time
+            estimated_hours = 8.0  # fallback cap
+            if db_job.created_at and db_job.completed_at:
+                elapsed = (db_job.completed_at - db_job.created_at).total_seconds()
+                speed_score = max(0.0, min(1.0, 1.0 - (elapsed / (estimated_hours * 3600))))
+            else:
+                speed_score = 0.5
+
             score = AgentScore(
                 job_id=job_id,
                 agent_id=agent.id,
                 quality_score=evaluation.get("quality_score", 0.5),
-                speed_score=0.5,  # TODO: calculate from time taken
+                speed_score=speed_score,
             )
             session.add(score)
 
@@ -151,6 +159,9 @@ class JobManager:
             n = agent.total_jobs
             agent.avg_quality = (
                 (agent.avg_quality * (n - 1) + score.quality_score) / n
+            )
+            agent.avg_speed = (
+                (agent.avg_speed * (n - 1) + score.speed_score) / n
             )
             agent.success_rate = (
                 (agent.success_rate * (n - 1) + 1.0) / n

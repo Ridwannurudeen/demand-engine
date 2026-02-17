@@ -98,7 +98,7 @@ class DirectFulfillment:
             db_job.margin = db_job.client_price or 0.0  # 100% margin
 
             # Record revenue
-            if db_job.client_price:
+            if db_job.client_price is not None:
                 revenue = Revenue(
                     job_id=job_id,
                     client_paid=db_job.client_price,

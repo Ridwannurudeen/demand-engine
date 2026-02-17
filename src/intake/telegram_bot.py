@@ -25,7 +25,7 @@ from src.execution.payment import PaymentMonitor
 from src.intake.base import IntakeSource
 from src.intelligence.agent_matcher import AgentMatcher
 from src.intelligence.pricing_engine import PricingEngine
-from src.intelligence.task_classifier import TaskClassifier
+from src.intelligence.task_classifier import Classification, TaskClassifier
 
 log = logging.getLogger(__name__)
 
@@ -250,7 +250,7 @@ class TelegramBot(IntakeSource):
         quote = self.pricer.generate_quote(classification)
 
         # Check free trial eligibility
-        eligible_for_trial = not await has_used_free_trial(str(user.id))
+        eligible_for_trial = not await has_used_free_trial(str(user.id), platform="telegram")
 
         # Update job with classification data
         async with AsyncSessionLocal() as session:
@@ -426,7 +426,7 @@ class TelegramBot(IntakeSource):
             )
 
     async def _process_paid_job(self, job_id: int, client_id: str) -> None:
-        """After payment confirmed: fulfill the job directly via Claude."""
+        """After payment confirmed: fulfill the job via ACP agents or direct Claude."""
         async with AsyncSessionLocal() as session:
             db_job = await session.get(Job, job_id)
             if not db_job:
@@ -434,6 +434,9 @@ class TelegramBot(IntakeSource):
             db_job.status = JobStatus.IN_PROGRESS
             complexity = db_job.complexity or 0.0
             is_trial = db_job.is_free_trial
+            category = db_job.category.value if db_job.category else "other"
+            client_price = db_job.client_price or 0.0
+            raw_request = db_job.raw_request
             await session.commit()
 
         # Free trials always use direct (single call), no orchestration
@@ -443,12 +446,13 @@ class TelegramBot(IntakeSource):
             )
             result = await self.direct.fulfill(job_id)
         elif complexity > 0.7:
-            await self.send_message(
-                client_id,
-                f"Job #{job_id}: This is a complex request — breaking it into "
-                "sub-tasks and working on them in parallel..."
+            # Try ACP marketplace agents first for complex jobs
+            acp_delegated, result = await self._try_acp_then_fallback(
+                job_id, client_id, category, complexity, client_price, raw_request
             )
-            result = await self.orchestrator.fulfill(job_id)
+            if acp_delegated:
+                # ACP job is async — result will be delivered via monitoring
+                return
         else:
             await self.send_message(
                 client_id, f"Job #{job_id}: Working on it now..."
@@ -465,6 +469,57 @@ class TelegramBot(IntakeSource):
                 f"Job #{job_id}: Something went wrong during fulfillment. "
                 "We're looking into it and will get back to you."
             )
+
+    async def _try_acp_then_fallback(
+        self,
+        job_id: int,
+        client_id: str,
+        category: str,
+        complexity: float,
+        client_price: float,
+        raw_request: str,
+    ) -> tuple[bool, str | None]:
+        """Try ACP marketplace agents; fall back to Orchestrator on failure.
+
+        Returns (acp_delegated, result) — if acp_delegated is True, the job
+        is being handled asynchronously and result should be ignored.
+        """
+        try:
+            classification = Classification(
+                category=category,
+                complexity=complexity,
+                estimated_hours=max(1.0, complexity * 8.0),
+                feasibility_score=1.0,
+                summary=raw_request[:200],
+            )
+            candidates = await self.matcher.find_agents(
+                classification, budget=client_price
+            )
+            if candidates:
+                best = candidates[0]
+                await self.send_message(
+                    client_id,
+                    f"Job #{job_id}: Found agent '{best.name}' — "
+                    "delegating your request..."
+                )
+                async with AsyncSessionLocal() as session:
+                    db_job = await session.get(Job, job_id)
+                acp_job_id = await self.job_mgr.create_acp_job(db_job, best)
+                await self.job_mgr.start_monitoring(job_id, acp_job_id)
+                return True, None
+        except Exception as e:
+            log.warning(
+                "ACP delegation failed for job #%d, falling back to orchestrator: %s",
+                job_id, e,
+            )
+
+        # Fallback: orchestrate directly
+        await self.send_message(
+            client_id,
+            f"Job #{job_id}: This is a complex request — breaking it into "
+            "sub-tasks and working on them in parallel..."
+        )
+        return False, await self.orchestrator.fulfill(job_id)
 
     async def _decline_job(self, query, job_id: int) -> None:
         async with AsyncSessionLocal() as session:

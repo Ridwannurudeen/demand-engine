@@ -6,7 +6,7 @@ import time
 
 import httpx
 
-from src.config import ACP_AGENT_WALLET
+from src.config import ACP_AGENT_WALLET, BASESCAN_API_KEY
 
 log = logging.getLogger(__name__)
 
@@ -19,7 +19,17 @@ class PaymentMonitor:
     """Monitors USDC transfers to the agent wallet on Base chain."""
 
     def __init__(self) -> None:
+        if not ACP_AGENT_WALLET or not ACP_AGENT_WALLET.startswith("0x"):
+            raise ValueError(
+                "ACP_AGENT_WALLET is empty or invalid. "
+                "Set a valid wallet address in .env to receive payments."
+            )
         self.wallet = ACP_AGENT_WALLET.lower()
+        if not BASESCAN_API_KEY:
+            log.warning(
+                "BASESCAN_API_KEY is not set — using unauthenticated Basescan API "
+                "(5 req/s limit). Set it in .env for reliable payment detection."
+            )
 
     def get_payment_instructions(self, amount: float, job_id: int) -> str:
         return (
@@ -101,6 +111,8 @@ class PaymentMonitor:
             "page": "1",
             "offset": "20",
         }
+        if BASESCAN_API_KEY:
+            params["apikey"] = BASESCAN_API_KEY
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(BASESCAN_API, params=params)
@@ -122,6 +134,8 @@ class PaymentMonitor:
             "page": "1",
             "offset": "50",
         }
+        if BASESCAN_API_KEY:
+            params["apikey"] = BASESCAN_API_KEY
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(BASESCAN_API, params=params)

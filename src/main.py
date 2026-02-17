@@ -11,7 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
 
-from src.config import ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN, TWITTER_BEARER_TOKEN
+from src.config import ACP_AGENT_WALLET, ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN, TWITTER_BEARER_TOKEN
 from src.data.models import init_db
 from src.intake.telegram_bot import TelegramBot
 from src.intake.twitter_intake import TwitterIntake
@@ -30,6 +30,8 @@ def _check_config() -> list[str]:
         errors.append("ANTHROPIC_API_KEY is not set in .env")
     if not TELEGRAM_BOT_TOKEN:
         errors.append("TELEGRAM_BOT_TOKEN is not set in .env")
+    if not ACP_AGENT_WALLET or not ACP_AGENT_WALLET.startswith("0x"):
+        errors.append("ACP_AGENT_WALLET is not set or invalid in .env")
     return errors
 
 

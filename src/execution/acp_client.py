@@ -24,7 +24,7 @@ class ACPClient:
         self.cli_path = ACP_CLI_PATH
         self.wallet = ACP_AGENT_WALLET
 
-    async def _run(self, *args: str) -> dict:
+    async def _run(self, *args: str, timeout: float = 60.0) -> dict:
         cmd = ["npx", "tsx", str(self.cli_path / "bin" / "acp.ts"), *args, "--json"]
         log.debug("ACP CLI: %s", " ".join(cmd))
         proc = await asyncio.create_subprocess_exec(
@@ -32,7 +32,16 @@ class ACPClient:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise RuntimeError(
+                f"ACP CLI timed out after {timeout:.0f}s: {' '.join(cmd)}"
+            )
         out = stdout.decode().strip()
         err = stderr.decode().strip()
 

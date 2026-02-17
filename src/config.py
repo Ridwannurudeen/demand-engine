@@ -23,6 +23,9 @@ TWITTER_ACCESS_SECRET: str = os.getenv("TWITTER_ACCESS_SECRET", "")
 # ── ACP ──────────────────────────────────────────────────────────────────
 ACP_AGENT_WALLET: str = os.getenv("ACP_AGENT_WALLET", "")
 
+# ── Basescan ─────────────────────────────────────────────────────────────
+BASESCAN_API_KEY: str = os.getenv("BASESCAN_API_KEY", "")
+
 # ── Database ─────────────────────────────────────────────────────────────
 DATABASE_URL: str = os.getenv(
     "DATABASE_URL", f"sqlite+aiosqlite:///{PROJECT_ROOT / 'demand_engine.db'}"
@@ -34,7 +37,7 @@ MIN_JOB_PRICE: float = float(os.getenv("MIN_JOB_PRICE", "5.0"))
 MAX_JOB_PRICE: float = float(os.getenv("MAX_JOB_PRICE", "500.0"))
 
 # ── Claude model ─────────────────────────────────────────────────────────
-CLAUDE_MODEL: str = "claude-sonnet-4-5-20250929"
+CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5-20250929")
 
 # ── Task categories ──────────────────────────────────────────────────────
 TASK_CATEGORIES = [
