@@ -37,7 +37,7 @@ MIN_JOB_PRICE: float = float(os.getenv("MIN_JOB_PRICE", "5.0"))
 MAX_JOB_PRICE: float = float(os.getenv("MAX_JOB_PRICE", "500.0"))
 
 # ── Claude model ─────────────────────────────────────────────────────────
-CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5-20250929")
+CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 
 # ── Task categories ──────────────────────────────────────────────────────
 TASK_CATEGORIES = [
