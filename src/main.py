@@ -13,6 +13,7 @@ import uvicorn
 
 from src.config import ACP_AGENT_WALLET, ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN, TWITTER_BEARER_TOKEN
 from src.data.models import init_db
+from src.intake.agdp_bounty_monitor import AGDPBountyMonitor
 from src.intake.telegram_bot import TelegramBot
 from src.intake.twitter_intake import TwitterIntake
 from src.web.dashboard import router as dashboard_router
@@ -63,6 +64,11 @@ async def main() -> None:
     else:
         log.info("Twitter intake disabled (no TWITTER_BEARER_TOKEN)")
 
+    # Start aGDP.io bounty monitor
+    bounty_monitor = AGDPBountyMonitor()
+    await bounty_monitor.start()
+    log.info("aGDP.io Bounty Monitor active")
+
     log.info("Demand Engine is running. Press Ctrl+C to stop.")
 
     # FastAPI server for Railway health check + Telegram webhook
@@ -104,6 +110,7 @@ async def main() -> None:
         pass
     finally:
         log.info("Shutting down...")
+        await bounty_monitor.stop()
         await twitter.stop()
         await bot.stop()
         log.info("Demand Engine stopped.")
