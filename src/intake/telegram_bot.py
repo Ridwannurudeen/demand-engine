@@ -5,6 +5,9 @@ import json
 import logging
 import os
 
+import logging as _logging
+
+import telegram.error
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
@@ -69,6 +72,28 @@ class TelegramBot(IntakeSource):
 
         await self.app.initialize()
         await self.app.start()
+
+        # Suppress 409 Conflict log spam from PTB's internal polling loop.
+        # The conflict is transient (~30s after restart) and self-resolves.
+        class _NoConflict(_logging.Filter):
+            def filter(self, record: _logging.LogRecord) -> bool:
+                if record.exc_info:
+                    exc_type = record.exc_info[0]
+                    if exc_type is not None and issubclass(exc_type, telegram.error.Conflict):
+                        return False
+                return True
+
+        _no_conflict = _NoConflict()
+        _logging.getLogger("telegram.ext.Updater").addFilter(_no_conflict)
+        _logging.getLogger("telegram.ext._utils.networkloop").addFilter(_no_conflict)
+
+        # Application-level error handler for everything else
+        async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+            if isinstance(context.error, telegram.error.Conflict):
+                return
+            log.error("Telegram handler error: %s", context.error, exc_info=context.error)
+
+        self.app.add_error_handler(_on_error)
 
         # Use webhook mode on Railway (has RAILWAY_PUBLIC_DOMAIN),
         # fall back to polling for local dev

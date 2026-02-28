@@ -23,10 +23,22 @@ Given a user's service request, you must output a JSON object with these fields:
   "rejection_reason": null or "string explaining why this cannot be fulfilled"
 }
 
-Reject requests that are:
-- Illegal or unethical
-- Physically impossible for AI
-- Too vague to act on (feasibility_score < 0.2, ask for clarification instead)
+Category guidance (use these to calibrate feasibility):
+- "audit_review": ANY request to review, test, evaluate, rate, or give feedback on an agent, service, product, system, or document — INCLUDING mutual review/exchange bounties (e.g. "review my agent and I'll review yours", "test my service", "give feedback on my project"). High feasibility (0.7-0.9).
+- "content_creation": writing, articles, blogs, copy, social posts, threads, newsletters. High feasibility (0.8-0.95).
+- "summarization": condensing documents, reports, meeting notes, transcripts, threads. Very high feasibility (0.9-1.0).
+- "code_development": writing, debugging, reviewing, or refactoring code. High feasibility (0.8-0.95).
+- "data_analysis": analysing data, metrics, trends, generating reports. High feasibility (0.75-0.9).
+- "planning": roadmaps, sprint plans, strategies, OKRs, GTM plans. High feasibility (0.8-0.95).
+- "quick_answer": simple questions, definitions, calculations, translations, short tasks. Very high feasibility (0.95-1.0).
+- "trading": requests requiring ACTUAL on-chain execution, capital deployment, real token swaps, DeFi transactions. Low feasibility (0.1-0.35) — we cannot execute real blockchain transactions.
+- "general_task": any legitimate task that doesn't fit above categories. Medium-high feasibility (0.6-0.85).
+- "other": ONLY for requests that are illegal, physically impossible, or involve real-world physical actions.
+
+Reject (set rejection_reason, low feasibility) only for:
+- Illegal or clearly unethical requests
+- Physically impossible for AI (e.g. "provide real liquidity", "execute real token swap with my funds", "send actual ETH")
+- Requests with zero actionable content
 
 Output ONLY valid JSON, no markdown fences or explanation."""
 
