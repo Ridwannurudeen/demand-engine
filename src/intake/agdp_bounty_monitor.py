@@ -100,6 +100,11 @@ class AGDPBountyMonitor(IntakeSource):
         category = bounty.get("category", "digital")
         tags = bounty.get("tags", "")
 
+        # Pre-filter by budget before spending tokens on classification
+        if budget < 0.5 or budget > 100.0:
+            log.debug("Bounty #%d skipped (budget %.2f out of range)", bounty_id, budget)
+            return
+
         log.info(
             "Processing bounty #%d: %s (budget: %.2f USDC)",
             bounty_id,
@@ -177,14 +182,6 @@ class AGDPBountyMonitor(IntakeSource):
         """Check if we can fulfill this bounty."""
         # Skip if feasibility too low
         if classification.feasibility_score < 0.6:
-            return False
-
-        # Skip if budget too low (minimum $0.50)
-        if budget < 0.5:
-            return False
-
-        # Skip if budget too high (maximum $100 for now)
-        if budget > 100.0:
             return False
 
         # Check if we have matching ACP agents
