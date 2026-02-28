@@ -10,6 +10,7 @@ import anthropic
 
 from src.config import ANTHROPIC_API_KEY, CLAUDE_MODEL
 from src.data.models import AsyncSessionLocal, Job, JobStatus, Revenue
+from src.execution.agdp_delivery import AGDPDelivery
 from src.execution.direct_fulfillment import CATEGORY_PROMPTS
 
 log = logging.getLogger(__name__)
@@ -34,7 +35,14 @@ class Orchestrator:
 
     async def _run_and_log(self, job_id: int) -> None:
         try:
-            await self.fulfill(job_id)
+            result = await self.fulfill(job_id)
+            if result is not None:
+                # Deliver to ACP if this was an aGDP bounty
+                async with AsyncSessionLocal() as session:
+                    db_job = await session.get(Job, job_id)
+                    platform = db_job.client_platform if db_job else None
+                if platform == "agdp":
+                    await AGDPDelivery().deliver(job_id)
         except Exception as e:
             log.error(
                 "Background fulfillment failed for job #%d: %s",

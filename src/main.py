@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 import uvicorn
 
 from src.config import ACP_AGENT_WALLET, ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN, TWITTER_BEARER_TOKEN
-from src.data.models import init_db
+from src.data.models import AsyncSessionLocal, init_db, Job, JobStatus
 from src.intake.agdp_bounty_monitor import AGDPBountyMonitor
 from src.intake.telegram_bot import TelegramBot
 from src.intake.twitter_intake import TwitterIntake
@@ -82,6 +82,24 @@ async def main() -> None:
     async def telegram_webhook(request: Request):
         data = await request.json()
         await bot.process_webhook_update(data)
+        return JSONResponse({"ok": True})
+
+    @app.post("/agdp-callback/{job_id}")
+    async def agdp_callback(job_id: int, request: Request):
+        """Receive delivery confirmation from aGDP / ACP."""
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        log.info("aGDP callback for job #%d: %s", job_id, data)
+        status = str(data.get("status", "")).lower()
+        if status in ("fulfilled", "completed", "paid", "accepted"):
+            async with AsyncSessionLocal() as session:
+                db_job = await session.get(Job, job_id)
+                if db_job and db_job.status != JobStatus.COMPLETED:
+                    db_job.status = JobStatus.COMPLETED
+                    await session.commit()
+                    log.info("Job #%d marked COMPLETED via aGDP callback", job_id)
         return JSONResponse({"ok": True})
 
     app.include_router(dashboard_router)

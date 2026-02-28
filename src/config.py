@@ -22,6 +22,7 @@ TWITTER_ACCESS_SECRET: str = os.getenv("TWITTER_ACCESS_SECRET", "")
 
 # ── ACP ──────────────────────────────────────────────────────────────────
 ACP_AGENT_WALLET: str = os.getenv("ACP_AGENT_WALLET", "")
+LITE_AGENT_API_KEY: str = os.getenv("LITE_AGENT_API_KEY", "")
 
 # ── Basescan ─────────────────────────────────────────────────────────────
 BASESCAN_API_KEY: str = os.getenv("BASESCAN_API_KEY", "")
