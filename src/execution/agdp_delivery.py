@@ -7,6 +7,7 @@ import httpx
 
 from src.config import LITE_AGENT_API_KEY
 from src.data.models import AsyncSessionLocal, Job
+from src.notifications import notify_operator
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +48,11 @@ class AGDPDelivery:
                 resp.raise_for_status()
                 log.info(
                     "Job #%d delivered to ACP (acp_job_id=%s)", job_id, acp_job_id
+                )
+                await notify_operator(
+                    f"Deliverable submitted!\n"
+                    f"Job #{job_id} (ACP: {acp_job_id})\n"
+                    f"Result sent to aGDP — awaiting payment confirmation."
                 )
                 return True
         except httpx.HTTPStatusError as e:

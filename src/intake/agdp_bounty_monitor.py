@@ -16,6 +16,7 @@ from src.intake.base import IntakeSource
 from src.intelligence.agent_matcher import AgentMatcher
 from src.intelligence.pricing_engine import PricingEngine
 from src.intelligence.task_classifier import Classification, TaskClassifier
+from src.notifications import notify_operator
 
 log = logging.getLogger(__name__)
 
@@ -171,6 +172,14 @@ class AGDPBountyMonitor(IntakeSource):
                 db_job = await session.get(Job, job_id)
                 db_job.acp_job_id = acp_job_id
                 await session.commit()
+
+        # Notify operator
+        await notify_operator(
+            f"Bounty claimed!\n"
+            f"#{bounty_id}: {title[:60]}\n"
+            f"Category: {classification.category} | Budget: ${budget:.2f} USDC\n"
+            f"Job #{job_id} created — executing now..."
+        )
 
         # Execute the job
         try:

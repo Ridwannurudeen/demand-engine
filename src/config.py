@@ -24,6 +24,10 @@ TWITTER_ACCESS_SECRET: str = os.getenv("TWITTER_ACCESS_SECRET", "")
 ACP_AGENT_WALLET: str = os.getenv("ACP_AGENT_WALLET", "")
 LITE_AGENT_API_KEY: str = os.getenv("LITE_AGENT_API_KEY", "")
 
+# ── Notifications ─────────────────────────────────────────────────────────
+# Your personal Telegram chat ID — send /myid to the bot to find it
+OPERATOR_CHAT_ID: str = os.getenv("OPERATOR_CHAT_ID", "")
+
 # ── Basescan ─────────────────────────────────────────────────────────────
 BASESCAN_API_KEY: str = os.getenv("BASESCAN_API_KEY", "")
 
