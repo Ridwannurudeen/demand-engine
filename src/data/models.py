@@ -41,12 +41,20 @@ class JobStatus(str, enum.Enum):
 
 class TaskCategory(str, enum.Enum):
     CONTENT_CREATION = "content_creation"
-    RESEARCH = "research"
-    TRADING = "trading"
+    COPYWRITING = "copywriting"
+    TECHNICAL_WRITING = "technical_writing"
     CODE = "code"
-    DESIGN = "design"
+    QA_TESTING = "qa_testing"
+    AUDIT_REVIEW = "audit_review"
     DATA_ANALYSIS = "data_analysis"
     SOCIAL_MEDIA = "social_media"
+    TRADING = "trading"
+    DESIGN = "design"
+    SUMMARIZATION = "summarization"
+    TRANSLATION = "translation"
+    PLANNING = "planning"
+    PRODUCT = "product"
+    RESEARCH = "research"
     OTHER = "other"
 
 
