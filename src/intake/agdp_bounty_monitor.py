@@ -15,7 +15,7 @@ from src.execution.orchestrator import Orchestrator
 from src.intake.base import IntakeSource
 from src.intelligence.agent_matcher import AgentMatcher
 from src.intelligence.pricing_engine import PricingEngine
-from src.intelligence.task_classifier import TaskClassifier
+from src.intelligence.task_classifier import Classification, TaskClassifier
 
 log = logging.getLogger(__name__)
 
@@ -114,10 +114,10 @@ class AGDPBountyMonitor(IntakeSource):
         can_fulfill = await self._can_fulfill(classification, budget)
         if not can_fulfill:
             log.info(
-                "Bounty #%d skipped (category: %s, confidence: %.2f, budget: %.2f)",
+                "Bounty #%d skipped (category: %s, feasibility: %.2f, budget: %.2f)",
                 bounty_id,
                 classification.category,
-                classification.confidence,
+                classification.feasibility_score,
                 budget,
             )
             return
@@ -125,22 +125,17 @@ class AGDPBountyMonitor(IntakeSource):
         # Create job in our database
         async with AsyncSessionLocal() as session:
             job = Job(
-                source_platform="agdp",
-                source_user_id=bounty.get("poster_wallet_address", "unknown"),
-                source_message_id=str(bounty_id),
-                description=description,
-                task_category=classification.category,
-                estimated_price=budget,
+                client_platform="agdp",
+                client_id=bounty.get("poster_wallet_address", "unknown"),
+                client_username=bounty.get("poster_name"),
+                raw_request=description,
+                category=classification.category,
+                complexity=classification.complexity,
+                client_price=budget,
                 is_free_trial=False,
                 status=JobStatus.CLASSIFIED,
-                metadata={
-                    "agdp_bounty_id": bounty_id,
-                    "title": title,
-                    "poster_name": bounty.get("poster_name"),
-                    "tags": tags,
-                    "category": category,
-                    "expires_at": bounty.get("expires_at"),
-                },
+                result_summary=f"Bounty #{bounty_id}: {title}",
+                acp_job_id=str(bounty_id),
             )
             session.add(job)
             await session.commit()
@@ -174,10 +169,10 @@ class AGDPBountyMonitor(IntakeSource):
                 exc_info=True,
             )
 
-    async def _can_fulfill(self, classification: Any, budget: float) -> bool:
+    async def _can_fulfill(self, classification: Classification, budget: float) -> bool:
         """Check if we can fulfill this bounty."""
-        # Skip if confidence too low
-        if classification.confidence < 0.6:
+        # Skip if feasibility too low
+        if classification.feasibility_score < 0.6:
             return False
 
         # Skip if budget too low (minimum $0.50)
@@ -190,9 +185,10 @@ class AGDPBountyMonitor(IntakeSource):
 
         # Check if we have matching ACP agents
         try:
-            matches = await self.matcher.find_matches(
-                classification.category,
-                classification.requirements,
+            matches = await self.matcher.find_agents(
+                classification,
+                budget=budget,
+                max_results=3,
             )
             return len(matches) > 0
         except Exception:
