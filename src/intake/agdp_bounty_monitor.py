@@ -102,7 +102,8 @@ class AGDPBountyMonitor(IntakeSource):
         tags = bounty.get("tags", "")
 
         # Pre-filter by budget before spending tokens on classification
-        if budget < 0.5 or budget > 100.0:
+        # $0.04 floor filters out the $0.01 "Hire Judge AI" junk while keeping real tasks
+        if budget < 0.04 or budget > 100.0:
             log.debug("Bounty #%d skipped (budget %.2f out of range)", bounty_id, budget)
             return
 
@@ -200,6 +201,10 @@ class AGDPBountyMonitor(IntakeSource):
         if classification.feasibility_score < 0.6:
             return False
 
+        # We do not take pure research jobs
+        if classification.category == "research":
+            return False
+
         # Check if we have matching ACP agents
         try:
             matches = await self.matcher.find_agents(
@@ -209,13 +214,9 @@ class AGDPBountyMonitor(IntakeSource):
             )
             return len(matches) > 0
         except Exception:
-            # If matcher fails, still try if it's a simple category
-            return classification.category in [
-                "content_creation",
-                "research",
-                "code",
-                "data_analysis",
-            ]
+            # If agent matcher fails, we can still fulfill directly via Claude
+            # for any category except research
+            return classification.category != "research"
 
     async def _claim_bounty(self, bounty_id: int, job_id: int) -> str | None:
         """Claim a bounty on aGDP.io. Returns ACP job ID on success, None on failure."""
