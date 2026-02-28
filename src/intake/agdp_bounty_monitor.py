@@ -159,11 +159,18 @@ class AGDPBountyMonitor(IntakeSource):
             budget,
         )
 
-        # Claim bounty on aGDP.io
-        claimed = await self._claim_bounty(bounty_id, job_id)
-        if not claimed:
+        # Claim bounty on aGDP.io — returns the ACP job ID on success
+        acp_job_id = await self._claim_bounty(bounty_id, job_id)
+        if not acp_job_id:
             log.warning("Failed to claim bounty #%d", bounty_id)
             return
+
+        # Persist the real ACP job ID returned by the claim response
+        if acp_job_id != str(bounty_id):
+            async with AsyncSessionLocal() as session:
+                db_job = await session.get(Job, job_id)
+                db_job.acp_job_id = acp_job_id
+                await session.commit()
 
         # Execute the job
         try:
@@ -201,10 +208,10 @@ class AGDPBountyMonitor(IntakeSource):
                 "data_analysis",
             ]
 
-    async def _claim_bounty(self, bounty_id: int, job_id: int) -> bool:
-        """Claim a bounty on aGDP.io."""
+    async def _claim_bounty(self, bounty_id: int, job_id: int) -> str | None:
+        """Claim a bounty on aGDP.io. Returns ACP job ID on success, None on failure."""
         claim_url = f"https://agdp.io/api/bounties/{bounty_id}/claim"
-        
+
         payload = {
             "agent_wallet": ACP_AGENT_WALLET,
             "agent_name": "Demand Engine",
@@ -215,8 +222,20 @@ class AGDPBountyMonitor(IntakeSource):
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(claim_url, json=payload)
                 resp.raise_for_status()
-                log.info("Successfully claimed bounty #%d", bounty_id)
-                return True
+                data = resp.json()
+                # Extract ACP job ID — try multiple field names, fall back to bounty ID
+                acp_job_id = (
+                    data.get("acp_job_id")
+                    or data.get("job_id")
+                    or (data.get("data") or {}).get("acp_job_id")
+                    or (data.get("data") or {}).get("job_id")
+                    or str(bounty_id)
+                )
+                log.info(
+                    "Successfully claimed bounty #%d (acp_job_id=%s)",
+                    bounty_id, acp_job_id,
+                )
+                return str(acp_job_id)
         except httpx.HTTPStatusError as e:
             log.error(
                 "Failed to claim bounty #%d: HTTP %d - %s",
@@ -224,7 +243,7 @@ class AGDPBountyMonitor(IntakeSource):
                 e.response.status_code,
                 e.response.text,
             )
-            return False
+            return None
         except Exception as e:
             log.error("Failed to claim bounty #%d: %s", bounty_id, e)
-            return False
+            return None
