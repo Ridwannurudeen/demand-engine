@@ -17,6 +17,7 @@ from telegram.ext import (
 
 from src.config import TELEGRAM_BOT_TOKEN
 from src.data.models import AsyncSessionLocal, Job, JobStatus, has_used_free_trial
+from src.intelligence.competitor_monitor import CompetitorMonitor
 from src.execution.delivery import DeliveryManager
 from src.execution.direct_fulfillment import DirectFulfillment
 from src.execution.job_manager import JobManager
@@ -31,7 +32,8 @@ log = logging.getLogger(__name__)
 
 
 class TelegramBot(IntakeSource):
-    def __init__(self) -> None:
+    def __init__(self, competitor_monitor: CompetitorMonitor | None = None) -> None:
+        self.competitor_monitor = competitor_monitor
         self.classifier = TaskClassifier()
         self.pricer = PricingEngine()
         self.matcher = AgentMatcher()
@@ -58,6 +60,8 @@ class TelegramBot(IntakeSource):
         self.app.add_handler(CommandHandler("status", self._cmd_status))
         self.app.add_handler(CommandHandler("jobs", self._cmd_jobs))
         self.app.add_handler(CommandHandler("paid", self._cmd_paid))
+        self.app.add_handler(CommandHandler("topage", self._cmd_topage))
+        self.app.add_handler(CommandHandler("myid", self._cmd_myid))
         self.app.add_handler(CallbackQueryHandler(self._handle_callback))
         self.app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message)
@@ -197,6 +201,43 @@ class TelegramBot(IntakeSource):
             price = f"${j.client_price:.2f}" if j.client_price else "pending"
             lines.append(f"#{j.id} — {j.status.value} — {price}")
         await update.message.reply_text("\n".join(lines))
+
+    async def _cmd_myid(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Reply with the user's Telegram chat ID (needed for OPERATOR_CHAT_ID env var)."""
+        chat_id = update.effective_chat.id
+        await update.message.reply_text(
+            f"Your Telegram chat ID is: {chat_id}\n\n"
+            f"Add this to your .env file:\n"
+            f"OPERATOR_CHAT_ID={chat_id}"
+        )
+
+    async def _cmd_topage(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Show top 5 aGDP.io agents and their winning patterns."""
+        if not self.competitor_monitor:
+            await update.message.reply_text("Competitor monitor is not enabled.")
+            return
+
+        await update.message.reply_text(
+            "Fetching aGDP.io data and analysing top agents... (may take ~15s)"
+        )
+        try:
+            analysis = await self.competitor_monitor.run_now()
+        except Exception as e:
+            log.error("Competitor analysis failed: %s", e)
+            await update.message.reply_text(f"Analysis failed: {e}")
+            return
+
+        # Telegram messages max out at 4096 chars — split if needed
+        if len(analysis) <= 4096:
+            await update.message.reply_text(analysis)
+        else:
+            # Send in chunks of 4096
+            for i in range(0, len(analysis), 4096):
+                await update.message.reply_text(analysis[i:i + 4096])
 
     # ── Message handling (new service requests) ──────────────────────
 

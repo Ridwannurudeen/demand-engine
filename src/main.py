@@ -16,6 +16,7 @@ from src.data.models import AsyncSessionLocal, init_db, Job, JobStatus
 from src.intake.agdp_bounty_monitor import AGDPBountyMonitor
 from src.intake.telegram_bot import TelegramBot
 from src.intake.twitter_intake import TwitterIntake
+from src.intelligence.competitor_monitor import CompetitorMonitor
 from src.web.dashboard import router as dashboard_router
 
 logging.basicConfig(
@@ -52,8 +53,12 @@ async def main() -> None:
     await init_db()
     log.info("Database initialized")
 
+    # Start competitor monitor (runs analysis hourly, powers /topage command)
+    competitor_monitor = CompetitorMonitor()
+    await competitor_monitor.start()
+
     # Start Telegram bot
-    bot = TelegramBot()
+    bot = TelegramBot(competitor_monitor=competitor_monitor)
     await bot.start()
 
     # Start Twitter intake (optional — only if credentials are set)
@@ -131,6 +136,7 @@ async def main() -> None:
         await bounty_monitor.stop()
         await twitter.stop()
         await bot.stop()
+        await competitor_monitor.stop()
         log.info("Demand Engine stopped.")
 
 
