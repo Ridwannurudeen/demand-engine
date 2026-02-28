@@ -28,6 +28,19 @@ class Orchestrator:
     def __init__(self) -> None:
         self.client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
+    async def execute_job(self, job_id: int) -> None:
+        """Schedule job fulfillment as a non-blocking background task."""
+        asyncio.create_task(self._run_and_log(job_id))
+
+    async def _run_and_log(self, job_id: int) -> None:
+        try:
+            await self.fulfill(job_id)
+        except Exception as e:
+            log.error(
+                "Background fulfillment failed for job #%d: %s",
+                job_id, e, exc_info=True,
+            )
+
     async def decompose(self, request: str) -> list[SubTask]:
         """Use Claude to break a request into sub-tasks."""
         response = await self.client.messages.create(
