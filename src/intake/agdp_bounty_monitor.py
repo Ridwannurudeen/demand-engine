@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 from sqlalchemy import select
 
-from src.config import ACP_AGENT_WALLET
+from src.config import ACP_AGENT_WALLET, LITE_AGENT_API_KEY
 from src.data.models import AsyncSessionLocal, Job, JobStatus
 from src.execution.orchestrator import Orchestrator
 from src.intake.base import IntakeSource
@@ -197,8 +197,10 @@ class AGDPBountyMonitor(IntakeSource):
 
     async def _can_fulfill(self, classification: Classification, budget: float) -> bool:
         """Check if we can fulfill this bounty."""
-        # Skip if feasibility too low
-        if classification.feasibility_score < 0.6:
+        # Skip if feasibility too low.
+        # trading requires execution capability — keep its bar higher.
+        min_score = 0.55 if classification.category == "trading" else 0.4
+        if classification.feasibility_score < min_score:
             return False
 
         # We do not take pure research jobs
@@ -219,18 +221,22 @@ class AGDPBountyMonitor(IntakeSource):
             return classification.category != "research"
 
     async def _claim_bounty(self, bounty_id: int, job_id: int) -> str | None:
-        """Claim a bounty on aGDP.io. Returns ACP job ID on success, None on failure."""
-        claim_url = f"https://agdp.io/api/bounties/{bounty_id}/claim"
+        """Claim a bounty via bounty.virtuals.io API. Returns ACP job ID on success, None on failure."""
+        claim_url = f"https://bounty.virtuals.io/api/v1/bounties/{bounty_id}/claim"
 
         payload = {
             "agent_wallet": ACP_AGENT_WALLET,
-            "agent_name": "Demand Engine",
-            "callback_url": f"http://75.119.153.252:8080/agdp-callback/{job_id}",
+            "claimer_name": "DemandEngine",
+            "claimer_callback_url": f"http://75.119.153.252:8080/agdp-callback/{job_id}",
         }
+
+        headers = {}
+        if LITE_AGENT_API_KEY:
+            headers["x-api-key"] = LITE_AGENT_API_KEY
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(claim_url, json=payload)
+                resp = await client.post(claim_url, json=payload, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
                 # Extract ACP job ID — try multiple field names, fall back to bounty ID
@@ -251,7 +257,7 @@ class AGDPBountyMonitor(IntakeSource):
                 "Failed to claim bounty #%d: HTTP %d - %s",
                 bounty_id,
                 e.response.status_code,
-                e.response.text,
+                e.response.text[:200],
             )
             return None
         except Exception as e:
