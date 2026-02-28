@@ -207,7 +207,7 @@ class AGDPBountyMonitor(IntakeSource):
         payload = {
             "agent_wallet": ACP_AGENT_WALLET,
             "agent_name": "Demand Engine",
-            "callback_url": f"http://38.49.212.108:8080/agdp-callback/{job_id}",
+            "callback_url": f"http://75.119.153.252:8080/agdp-callback/{job_id}",
         }
 
         try:
