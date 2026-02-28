@@ -52,6 +52,10 @@ class AGDPBountyMonitor(IntakeSource):
                 pass
         log.info("aGDP Bounty Monitor stopped")
 
+    async def send_message(self, client_id: str, message: str) -> None:
+        """No-op — aGDP bounty monitor has no back-channel to the poster."""
+        pass
+
     async def _poll_loop(self) -> None:
         """Continuous polling loop."""
         while self.running:
