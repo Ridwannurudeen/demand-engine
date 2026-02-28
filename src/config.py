@@ -46,12 +46,19 @@ CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 
 # ── Task categories ──────────────────────────────────────────────────────
 TASK_CATEGORIES = [
-    "content_creation",
-    "research",
-    "trading",
-    "code",
-    "design",
-    "data_analysis",
-    "social_media",
-    "other",
+    "content_creation",   # blog posts, articles, creative writing
+    "copywriting",        # marketing copy, ads, landing pages, email campaigns
+    "technical_writing",  # postmortems, runbooks, incident reports, specs, docs
+    "code",               # software development, scripts, debugging
+    "qa_testing",         # test plans, test cases, validation reports, reliability audits
+    "audit_review",       # process audits, code reviews, gap analysis, feedback reports
+    "data_analysis",      # data interpretation, metrics, KPI dashboards
+    "social_media",       # posts, threads, engagement strategy
+    "trading",            # crypto/financial analysis
+    "design",             # design specs, layouts, UI/UX recommendations
+    "summarization",      # condensing documents, reports, meeting notes, threads
+    "translation",        # language translation
+    "planning",           # project plans, roadmaps, action plans, strategy docs
+    "product",            # PRDs, user stories, feature specs, product strategy
+    "other",              # anything else Claude can handle
 ]
