@@ -79,7 +79,10 @@ class Job(Base):
 
     # Request
     raw_request = Column(Text, nullable=False)
-    category = Column(Enum(TaskCategory), nullable=True)
+    category = Column(
+        Enum(TaskCategory, values_callable=lambda x: [e.value for e in x]),
+        nullable=True,
+    )
     complexity = Column(Float, nullable=True)  # 0.0 – 1.0
     requirements_json = Column(Text, nullable=True)  # JSON blob of extracted reqs
 
